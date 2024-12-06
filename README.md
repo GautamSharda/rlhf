@@ -20,7 +20,7 @@ Here is an output of the final fine-tuned model in action:
 ![alt text](dpo_log.png)
 
 Compare to what the base model generates:
-![alt text](image.png)
+![alt text](base_log.png)
 
 # Steps to run the finetuning script on runpod:
 
