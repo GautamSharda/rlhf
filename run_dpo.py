@@ -170,9 +170,23 @@ def train_ppo(base_model, tokenizer):
     print("\nPreparing dataset...")
     dataset = load_dataset("Dahoas/rm-static", split="train[:1000]")
 
-    # Create the value-policy wrapper before PPOTrainer initialization
-    from trl.trainer.ppo_trainer import PolicyAndValueWrapper
-    policy_value_model = PolicyAndValueWrapper(
+    # Create custom wrapper that includes generation_config
+    class CustomPolicyValueWrapper(nn.Module):
+        def __init__(self, policy, value_model):
+            super().__init__()
+            self.policy = policy
+            self.value_model = value_model
+            self.critic_backbone = getattr(value_model, value_model.base_model_prefix)
+            # Copy generation config from policy
+            self.generation_config = policy.generation_config
+        
+        def forward(self, **kwargs):
+            output = self.critic_backbone(**kwargs)
+            logits = self.value_model.score(output.hidden_states[-1])
+            return self.policy(**kwargs), logits
+
+    # Create the wrapper with our custom class
+    policy_value_model = CustomPolicyValueWrapper(
         policy=base_model,
         value_model=value_model
     )
@@ -186,8 +200,7 @@ def train_ppo(base_model, tokenizer):
             ref_policy=None,
             tokenizer=tokenizer,
             train_dataset=dataset,
-            reward_model=reward_model,
-            value_model=value_model  # Provide value model explicitly
+            reward_model=reward_model
         )
 
         print("Starting PPO training...")
@@ -202,10 +215,9 @@ def train_ppo(base_model, tokenizer):
         print(traceback.format_exc())
         
         print("\nModel inspection:")
-        print(f"Policy-value model modules exist: {hasattr(policy_value_model, 'modules')}")
-        print(f"Base model modules exist: {hasattr(base_model, 'modules')}")
-        print(f"Value model modules exist: {hasattr(value_model, 'modules')}")
-        print(f"Reward model modules exist: {hasattr(reward_model, 'modules')}")
+        print(f"Generation config exists: {hasattr(policy_value_model, 'generation_config')}")
+        print(f"Policy model type: {type(policy_value_model.policy)}")
+        print(f"Value model type: {type(policy_value_model.value_model)}")
         
         return base_model
 
