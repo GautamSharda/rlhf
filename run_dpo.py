@@ -203,7 +203,7 @@ def train_ppo(base_model, tokenizer):
         print(f"reward_model type: {type(reward_model)}")
         return base_model
 
-def test_model(model, tokenizer):
+def test_model(base, model, tokenizer):
     print("\nTesting the model...")
     model = FastLanguageModel.for_inference(model)
 
@@ -217,6 +217,14 @@ def test_model(model, tokenizer):
         return_tensors="pt",
     ).to("cuda")
 
+    print("Base response:")
+    text_streamer = TextStreamer(tokenizer)
+    _ = base.generate(
+        input_ids=inputs,
+        streamer=text_streamer,
+        max_new_tokens=128,
+        use_cache=True
+    )
     print("Model response:")
     text_streamer = TextStreamer(tokenizer)
     _ = model.generate(
@@ -236,4 +244,4 @@ if __name__ == "__main__":
     final_model = train_ppo(sft_model, tokenizer)
 
     # Test the final model
-    test_model(final_model, tokenizer)
+    test_model(sft_model, final_model, tokenizer)
