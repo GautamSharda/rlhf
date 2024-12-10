@@ -142,70 +142,75 @@ def train_ppo(base_model, tokenizer):
         optim="adamw_8bit"
     )
 
-    print("Initializing models...")
+    # Start by setting up all models
+    if hasattr(base_model, "get_base_model"):
+        print("Getting base model...")
+        policy = base_model.get_base_model()
+    else:
+        policy = base_model
+        
+    # Ensure policy is in training mode
+    policy.train()
     
-    # Print original model info
-    print(f"Original model type: {type(base_model)}")
-    print(f"Original model has modules: {hasattr(base_model, 'modules')}")
-
     # Create value model
+    print("Creating value model...")
     value_model = AutoModelForSequenceClassification.from_pretrained(
         "lvwerra/distilbert-imdb",
         num_labels=2,
         ignore_mismatched_sizes=True,
         torch_dtype=torch.float16
     ).cuda()
+    
+    # Value model in eval mode
+    value_model.eval()
 
-    # Load reward model
+    # Create reward model
     print("Loading reward model...")
-    try:
-        reward_model = AutoModelForSequenceClassification.from_pretrained(
-            "lvwerra/distilbert-imdb",
-            num_labels=2,
-            ignore_mismatched_sizes=True,
-            torch_dtype=torch.float16
-        ).cuda()
-        print("Successfully loaded reward model")
-    except Exception as e:
-        print(f"Error loading reward model: {e}")
-        return base_model
+    reward_model = AutoModelForSequenceClassification.from_pretrained(
+        "lvwerra/distilbert-imdb",
+        num_labels=2,
+        ignore_mismatched_sizes=True,
+        torch_dtype=torch.float16
+    ).cuda()
+    
+    # Reward model in eval mode
+    reward_model.eval()
+    print("Successfully loaded reward model")
 
     # Create dataset
     print("\nPreparing dataset...")
     dataset = load_dataset("Dahoas/rm-static", split="train[:1000]")
 
-    # Get base model if it's a PEFT model
-    if hasattr(base_model, "get_base_model"):
-        print("Unwrapping PEFT model...")
-        policy = base_model.get_base_model()
-    else:
-        policy = base_model
+    # Pre-verify all models
+    models_to_check = {
+        'policy': policy,
+        'value_model': value_model,
+        'reward_model': reward_model
+    }
 
-    # Verify each model's modules
-    print("\nVerifying models before wrapping:")
-    print(f"Policy modules exist: {hasattr(policy, 'modules')}")
-    print(f"Value model modules exist: {hasattr(value_model, 'modules')}")
-    print(f"Reward model modules exist: {hasattr(reward_model, 'modules')}")
-
-    # Try accessing some modules to verify
-    print("\nTrying to access modules:")
-    try:
-        next(policy.modules())
-        print("Successfully accessed policy modules")
-    except Exception as e:
-        print(f"Error accessing policy modules: {e}")
+    print("\nVerifying models:")
+    for name, model in models_to_check.items():
+        print(f"{name}:")
+        print(f"  - Type: {type(model)}")
+        print(f"  - Has modules: {hasattr(model, 'modules')}")
+        print(f"  - Device: {next(model.parameters()).device}")
+        try:
+            next(model.modules())
+            print("  - Can access modules: Yes")
+        except Exception as e:
+            print(f"  - Can access modules: No - {str(e)}")
 
     print("\nInitializing PPO trainer...")
     try:
-        # Initialize trainer without wrapping
+        # Initialize trainer
         ppo_trainer = PPOTrainer(
             config=ppo_config,
-            policy=policy,  # Use unwrapped policy
+            policy=policy,
             ref_policy=None,
             tokenizer=tokenizer,
             train_dataset=dataset,
             reward_model=reward_model,
-            value_model=value_model  # Pass value_model separately
+            value_model=value_model
         )
 
         print("Starting PPO training...")
@@ -215,10 +220,9 @@ def train_ppo(base_model, tokenizer):
 
     except Exception as e:
         print(f"\nError during PPO training setup: {e}")
+        print("\nFull traceback:")
         import traceback
-        print("Full traceback:")
         print(traceback.format_exc())
-        
         return base_model
 
 def test_model(base, model, tokenizer):
