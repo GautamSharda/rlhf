@@ -162,13 +162,10 @@ def train_ppo(base_model, tokenizer):
 
     # Initialize PPO trainer
     ppo_trainer = PPOTrainer(
-        config=training_args,
+        args=training_args,
+        processing_class=tokenizer,
         model=base_model,
-        ref_model=None,
-        tokenizer=tokenizer,
-        dataset=None,
         reward_model=reward_model,
-        reward_tokenizer=tokenizer
     )
 
     print("Starting PPO training...")
