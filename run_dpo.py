@@ -130,17 +130,9 @@ def train_dpo(base_model, tokenizer):
 # Second part: PPO
 def train_ppo(base_model, tokenizer):
     print("Starting PPO Training...")
-
-    # Configure quantization
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.float16,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_use_double_quant=False,
-    )
     
     # Configure PPO training
-    training_args = PPOConfig(
+    ppo_config = PPOConfig(
         output_dir="ppo_output",
         per_device_train_batch_size=4,
         learning_rate=1e-5,
@@ -151,37 +143,40 @@ def train_ppo(base_model, tokenizer):
         optim="adamw_8bit"
     )
 
-    # Enable gradient checkpointing
-    base_model.gradient_checkpointing_enable()
+    # Load reward model
+    print("Loading reward model...")
+    try:
+        reward_model = AutoModelForSequenceClassification.from_pretrained(
+            "lvwerra/distilbert-imdb",
+            num_labels=1,
+            torch_dtype=torch.float16
+        ).cuda()
+        print("Successfully loaded reward model")
+    except Exception as e:
+        print(f"Error loading reward model: {e}")
+        return None
 
-    reward_model = AutoModelForSequenceClassification.from_pretrained(
-        "facebook/opt-350m",  # Using a smaller model that's more likely to work
-        num_labels=1,
-        torch_dtype=torch.float16,
-        trust_remote_code=True
-    ).cuda()  # Explicitly move to GPU
-    
-    ref_policy = deepcopy(base_model)
-    assert ref_policy is not None, "Reference policy creation failed!"
-    train_dataset = load_dataset("OpenAssistant/oasst1", split="train")
-    # Initialize PPO trainer
+    # Create a simple but properly formatted dataset
+    print("Loading dataset...")
+    raw_dataset = load_dataset("Dahoas/rm-static", split="train")
+    train_dataset = raw_dataset.select(range(min(len(raw_dataset), 1000)))
+
+    # Initialize PPO trainer with parameters expected by unsloth wrapper
     ppo_trainer = PPOTrainer(
-        config=training_args,
+        config=ppo_config,
         policy=base_model,
-        ref_policy=ref_policy,
+        ref_policy=None,
         tokenizer=tokenizer,
-        dataset=train_dataset,
-        reward_model=reward_model,
-        value_model=None
+        train_dataset=train_dataset,  # Changed from dataset to train_dataset
+        reward_model=reward_model
     )
 
     print("Starting PPO training...")
     ppo_trainer.train()
     print("PPO Training completed!")
 
-    # Save the final model
-    ppo_trainer.save_pretrained("final_ppo_model")
-    return ppo_trainer.model
+    ppo_trainer.save_model()
+    return ppo_trainer.policy  # Changed from model to policy
 
 def test_model(model, tokenizer):
     print("\nTesting the model...")
