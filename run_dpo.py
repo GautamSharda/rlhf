@@ -19,8 +19,6 @@ def train_sft():
         dtype=None,
     )
 
-    return model, tokenizer
-
     model = FastLanguageModel.get_peft_model(
         model,
         r=16,
@@ -31,6 +29,7 @@ def train_sft():
         use_gradient_checkpointing="unsloth"
     )
 
+    # Apply chat template before returning
     tokenizer = get_chat_template(
         tokenizer,
         mapping={"role": "from", "content": "value", "user": "human", "assistant": "gpt"},
@@ -140,16 +139,9 @@ def train_ppo(base_model, tokenizer):
         gradient_accumulation_steps=1,
         save_strategy="epoch",
         logging_steps=10,
-        optim="adamw_8bit"
+        optim="adamw_8bit",
+        model_max_length=512  # Added to help with sequence lengths
     )
-
-    # Create value model (using same architecture as reward model)
-    value_model = AutoModelForSequenceClassification.from_pretrained(
-        "lvwerra/distilbert-imdb",
-        num_labels=2,
-        ignore_mismatched_sizes=True,
-        torch_dtype=torch.float16
-    ).cuda()
 
     # Load reward model
     print("Loading reward model...")
@@ -165,15 +157,21 @@ def train_ppo(base_model, tokenizer):
         print(f"Error loading reward model: {e}")
         return base_model
 
-    # Create a simple but properly formatted dataset
+    # Create a properly formatted dataset
     print("Loading dataset...")
     raw_dataset = load_dataset("Dahoas/rm-static", split="train")
-    train_dataset = raw_dataset.select(range(min(len(raw_dataset), 1000)))
+    
+    # Format dataset to match PPO expectations
+    def format_dataset(example):
+        return {
+            "input_ids": tokenizer(example["prompt"], truncation=True, max_length=512)["input_ids"],
+            "query": example["prompt"],
+            "response": example["chosen"]
+        }
+    
+    train_dataset = raw_dataset.map(format_dataset)
+    train_dataset = train_dataset.select(range(min(len(train_dataset), 1000)))
 
-    # Enable gradient checkpointing on the base model
-    base_model.gradient_checkpointing_enable()
-
-    # Initialize PPO trainer
     try:
         ppo_trainer = PPOTrainer(
             config=ppo_config,
@@ -181,24 +179,20 @@ def train_ppo(base_model, tokenizer):
             ref_policy=None,
             tokenizer=tokenizer,
             train_dataset=train_dataset,
-            reward_model=reward_model,
-            value_model=value_model  # Added value model
+            reward_model=reward_model
         )
 
         print("Starting PPO training...")
         ppo_trainer.train()
         print("PPO Training completed!")
-
         return ppo_trainer.policy
 
     except Exception as e:
         print(f"Error during PPO training setup: {e}")
-        # Print more detailed information
         print("Debug info:")
         print(f"policy type: {type(base_model)}")
         print(f"tokenizer type: {type(tokenizer)}")
         print(f"reward_model type: {type(reward_model)}")
-        print(f"value_model type: {type(value_model)}")
         return base_model
 
 def test_model(model, tokenizer):
