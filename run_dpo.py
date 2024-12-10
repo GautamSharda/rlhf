@@ -171,7 +171,7 @@ def train_ppo(base_model, tokenizer):
     dataset = load_dataset("Dahoas/rm-static", split="train[:1000]")
 
     # Create custom wrapper that includes generation_config
-    class CustomPolicyValueWrapper(nn.Module):
+    class CustomPolicyValueWrapper(torch.nn.Module):
         def __init__(self, policy, value_model):
             super().__init__()
             self.policy = policy
