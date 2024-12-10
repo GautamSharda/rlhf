@@ -162,6 +162,7 @@ def train_ppo(base_model, tokenizer):
     ).cuda()  # Explicitly move to GPU
     
     ref_policy = deepcopy(base_model)
+    assert ref_policy is not None, "Reference policy creation failed!"
     train_dataset = load_dataset("OpenAssistant/oasst1", split="train")
     # Initialize PPO trainer
     ppo_trainer = PPOTrainer(
@@ -170,8 +171,7 @@ def train_ppo(base_model, tokenizer):
         policy=base_model,
         ref_policy=ref_policy,
         train_dataset=train_dataset,
-        reward_model=reward_model,
-        
+        reward_model=reward_model
     )
 
     print("Starting PPO training...")
