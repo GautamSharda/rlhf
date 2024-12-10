@@ -1,5 +1,5 @@
 import torch
-from trl import SFTTrainer, DPOTrainer, DPOConfig, PPOConfig
+from trl import SFTTrainer, DPOTrainer, DPOConfig, PPOTrainer, PPOConfig
 from datasets import load_dataset
 from transformers import TrainingArguments, TextStreamer
 from unsloth.chat_templates import get_chat_template
