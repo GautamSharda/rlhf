@@ -144,7 +144,11 @@ def train_ppo(base_model, tokenizer):
 
     print("Initializing models...")
     
-    # Create value model from same architecture as reward model
+    # Print original model info
+    print(f"Original model type: {type(base_model)}")
+    print(f"Original model has modules: {hasattr(base_model, 'modules')}")
+
+    # Create value model
     value_model = AutoModelForSequenceClassification.from_pretrained(
         "lvwerra/distilbert-imdb",
         num_labels=2,
@@ -170,37 +174,38 @@ def train_ppo(base_model, tokenizer):
     print("\nPreparing dataset...")
     dataset = load_dataset("Dahoas/rm-static", split="train[:1000]")
 
-    # Create custom wrapper that includes generation_config
-    class CustomPolicyValueWrapper(torch.nn.Module):
-        def __init__(self, policy, value_model):
-            super().__init__()
-            self.policy = policy
-            self.value_model = value_model
-            self.critic_backbone = getattr(value_model, value_model.base_model_prefix)
-            # Copy generation config from policy
-            self.generation_config = policy.generation_config
-        
-        def forward(self, **kwargs):
-            output = self.critic_backbone(**kwargs)
-            logits = self.value_model.score(output.hidden_states[-1])
-            return self.policy(**kwargs), logits
+    # Get base model if it's a PEFT model
+    if hasattr(base_model, "get_base_model"):
+        print("Unwrapping PEFT model...")
+        policy = base_model.get_base_model()
+    else:
+        policy = base_model
 
-    # Create the wrapper with our custom class
-    policy_value_model = CustomPolicyValueWrapper(
-        policy=base_model,
-        value_model=value_model
-    )
+    # Verify each model's modules
+    print("\nVerifying models before wrapping:")
+    print(f"Policy modules exist: {hasattr(policy, 'modules')}")
+    print(f"Value model modules exist: {hasattr(value_model, 'modules')}")
+    print(f"Reward model modules exist: {hasattr(reward_model, 'modules')}")
+
+    # Try accessing some modules to verify
+    print("\nTrying to access modules:")
+    try:
+        next(policy.modules())
+        print("Successfully accessed policy modules")
+    except Exception as e:
+        print(f"Error accessing policy modules: {e}")
 
     print("\nInitializing PPO trainer...")
     try:
-        # Initialize trainer with wrapped model
+        # Initialize trainer without wrapping
         ppo_trainer = PPOTrainer(
             config=ppo_config,
-            policy=policy_value_model,
+            policy=policy,  # Use unwrapped policy
             ref_policy=None,
             tokenizer=tokenizer,
             train_dataset=dataset,
-            reward_model=reward_model
+            reward_model=reward_model,
+            value_model=value_model  # Pass value_model separately
         )
 
         print("Starting PPO training...")
@@ -213,11 +218,6 @@ def train_ppo(base_model, tokenizer):
         import traceback
         print("Full traceback:")
         print(traceback.format_exc())
-        
-        print("\nModel inspection:")
-        print(f"Generation config exists: {hasattr(policy_value_model, 'generation_config')}")
-        print(f"Policy model type: {type(policy_value_model.policy)}")
-        print(f"Value model type: {type(policy_value_model.value_model)}")
         
         return base_model
 
