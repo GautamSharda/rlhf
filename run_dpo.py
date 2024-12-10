@@ -18,6 +18,8 @@ def train_sft():
         dtype=None,
     )
 
+    return model, tokenizer
+
     model = FastLanguageModel.get_peft_model(
         model,
         r=16,
