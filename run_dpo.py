@@ -143,6 +143,14 @@ def train_ppo(base_model, tokenizer):
         optim="adamw_8bit"
     )
 
+    # Create value model (using same architecture as reward model)
+    value_model = AutoModelForSequenceClassification.from_pretrained(
+        "lvwerra/distilbert-imdb",
+        num_labels=2,
+        ignore_mismatched_sizes=True,
+        torch_dtype=torch.float16
+    ).cuda()
+
     # Load reward model
     print("Loading reward model...")
     try:
@@ -155,28 +163,43 @@ def train_ppo(base_model, tokenizer):
         print("Successfully loaded reward model")
     except Exception as e:
         print(f"Error loading reward model: {e}")
-        return None
+        return base_model
 
     # Create a simple but properly formatted dataset
     print("Loading dataset...")
     raw_dataset = load_dataset("Dahoas/rm-static", split="train")
     train_dataset = raw_dataset.select(range(min(len(raw_dataset), 1000)))
 
-    # Initialize PPO trainer with parameters expected by unsloth wrapper
-    ppo_trainer = PPOTrainer(
-        config=ppo_config,
-        policy=base_model,
-        ref_policy=None,
-        tokenizer=tokenizer,
-        train_dataset=train_dataset,  # Changed from dataset to train_dataset
-        reward_model=reward_model
-    )
+    # Enable gradient checkpointing on the base model
+    base_model.gradient_checkpointing_enable()
 
-    print("Starting PPO training...")
-    ppo_trainer.train()
-    print("PPO Training completed!")
+    # Initialize PPO trainer
+    try:
+        ppo_trainer = PPOTrainer(
+            config=ppo_config,
+            policy=base_model,
+            ref_policy=None,
+            tokenizer=tokenizer,
+            train_dataset=train_dataset,
+            reward_model=reward_model,
+            value_model=value_model  # Added value model
+        )
 
-    return ppo_trainer.policy  # Changed from model to policy
+        print("Starting PPO training...")
+        ppo_trainer.train()
+        print("PPO Training completed!")
+
+        return ppo_trainer.policy
+
+    except Exception as e:
+        print(f"Error during PPO training setup: {e}")
+        # Print more detailed information
+        print("Debug info:")
+        print(f"policy type: {type(base_model)}")
+        print(f"tokenizer type: {type(tokenizer)}")
+        print(f"reward_model type: {type(reward_model)}")
+        print(f"value_model type: {type(value_model)}")
+        return base_model
 
 def test_model(model, tokenizer):
     print("\nTesting the model...")
