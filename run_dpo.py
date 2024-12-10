@@ -148,7 +148,6 @@ def train_ppo(base_model, tokenizer):
     # Load reward model with proper configuration
     reward_model = AutoModelForSequenceClassification.from_pretrained(
         "nvidia/Llama-3.1-nemotron-70B-Reward",
-        from_tf=True,
         device_map="auto",
         load_in_4bit=True,
         trust_remote_code=True
