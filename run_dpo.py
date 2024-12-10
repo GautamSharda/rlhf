@@ -147,11 +147,12 @@ def train_ppo(base_model, tokenizer):
 
     # Load reward model with proper configuration
     reward_model = AutoModelForSequenceClassification.from_pretrained(
-        "nvidia/Llama-3.1-nemotron-70B-Reward",
+        "OpenAssistant/reward-model-deberta-v3-large-v2",
         device_map="auto",
-        load_in_4bit=True,
+        quantization_config=bnb_config,
         trust_remote_code=True
     )
+
 
     # Initialize PPO trainer
     ppo_trainer = PPOTrainer(
