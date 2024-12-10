@@ -178,7 +178,7 @@ def train_ppo(base_model, tokenizer):
         }
     
     train_dataset = raw_dataset.map(format_dataset)
-    train_dataset = train_dataset.select(range(min(len(train_dataset), 1000)))
+    train_dataset = train_dataset.select(range(min(len(train_dataset), 1000000000000000)))
 
     try:
         ppo_trainer = PPOTrainer(
