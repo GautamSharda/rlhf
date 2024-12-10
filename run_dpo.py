@@ -153,14 +153,12 @@ def train_ppo(base_model, tokenizer):
     # Enable gradient checkpointing
     base_model.gradient_checkpointing_enable()
 
-    # Load reward model with proper configuration
     reward_model = AutoModelForSequenceClassification.from_pretrained(
-        "OpenAssistant/reward-model-deberta-v3-large-v2",
-        device_map="auto",
-        quantization_config=bnb_config,
+        "facebook/opt-350m",  # Using a smaller model that's more likely to work
+        num_labels=1,
+        torch_dtype=torch.float16,
         trust_remote_code=True
-    )
-
+    ).cuda()  # Explicitly move to GPU
 
     # Initialize PPO trainer
     ppo_trainer = PPOTrainer(
