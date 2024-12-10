@@ -144,12 +144,13 @@ def train_ppo(base_model, tokenizer):
 
     print("Initializing models...")
     
-    # Keep original policy model
-    policy_model = base_model
-    policy_model.train()  # Ensure in training mode
-    
-    # No need for ref_model when using PEFT
-    ref_model = None
+    # Create value model from same architecture as reward model
+    value_model = AutoModelForSequenceClassification.from_pretrained(
+        "lvwerra/distilbert-imdb",
+        num_labels=2,
+        ignore_mismatched_sizes=True,
+        torch_dtype=torch.float16
+    ).cuda()
 
     # Load reward model
     print("Loading reward model...")
@@ -160,31 +161,33 @@ def train_ppo(base_model, tokenizer):
             ignore_mismatched_sizes=True,
             torch_dtype=torch.float16
         ).cuda()
-        reward_model.eval()  # Put in eval mode
         print("Successfully loaded reward model")
     except Exception as e:
         print(f"Error loading reward model: {e}")
         return base_model
 
-    # Verify models
-    print("\nVerifying models...")
-    print(f"Policy model: {type(policy_model)}")
-    print(f"Reward model: {type(reward_model)}")
-
     # Create dataset
     print("\nPreparing dataset...")
     dataset = load_dataset("Dahoas/rm-static", split="train[:1000]")
-    
-    print("Initializing PPO trainer...")
+
+    # Create the value-policy wrapper before PPOTrainer initialization
+    from trl.trainer.ppo_trainer import PolicyAndValueWrapper
+    policy_value_model = PolicyAndValueWrapper(
+        policy=base_model,
+        value_model=value_model
+    )
+
+    print("\nInitializing PPO trainer...")
     try:
-        # Initialize trainer with minimal components first
+        # Initialize trainer with wrapped model
         ppo_trainer = PPOTrainer(
             config=ppo_config,
-            policy=policy_model,
-            ref_policy=None,  # Explicitly None since using PEFT
+            policy=policy_value_model,
+            ref_policy=None,
             tokenizer=tokenizer,
             train_dataset=dataset,
-            reward_model=reward_model
+            reward_model=reward_model,
+            value_model=value_model  # Provide value model explicitly
         )
 
         print("Starting PPO training...")
@@ -198,9 +201,10 @@ def train_ppo(base_model, tokenizer):
         print("Full traceback:")
         print(traceback.format_exc())
         
-        # Additional debugging info
         print("\nModel inspection:")
-        print(f"Policy model modules exist: {hasattr(policy_model, 'modules')}")
+        print(f"Policy-value model modules exist: {hasattr(policy_value_model, 'modules')}")
+        print(f"Base model modules exist: {hasattr(base_model, 'modules')}")
+        print(f"Value model modules exist: {hasattr(value_model, 'modules')}")
         print(f"Reward model modules exist: {hasattr(reward_model, 'modules')}")
         
         return base_model
