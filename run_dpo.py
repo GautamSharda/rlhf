@@ -1,7 +1,7 @@
 import torch
 from trl import SFTTrainer, DPOTrainer, DPOConfig, PPOTrainer, PPOConfig
 from datasets import load_dataset
-from transformers import TrainingArguments, TextStreamer
+from transformers import AutoModelForCausalLM, AutoModelForSequenceClassification, TrainingArguments, TextStreamer
 from unsloth.chat_templates import get_chat_template
 from unsloth import FastLanguageModel, is_bfloat16_supported
 import os
@@ -137,16 +137,25 @@ def train_ppo(base_model, tokenizer):
     # Enable gradient checkpointing
     base_model.gradient_checkpointing_enable()
 
+    policy = AutoModelForCausalLM.from_pretrained(
+        "unsloth/Meta-Llama-3.1-8B-bnb-4bit"
+    )
+
+    reward_model = AutoModelForSequenceClassification.from_pretrained(
+        "nvidia/Llama-3.1-Nemotron-70B-Reward"
+    )
+
+
     ppo_trainer = PPOTrainer(
         args=training_args,
         processing_class=tokenizer,
         model=policy,
-        ref_model=ref_policy,
+        ref_model=None,
         reward_model=reward_model,
-        value_model=value_model,
-        train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
-        peft_config=peft_config,
+        value_model=None,
+        train_dataset=None,
+        eval_dataset=None,
+        peft_config=None,
     )
 
     print("Starting PPO training...")
