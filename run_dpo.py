@@ -160,13 +160,14 @@ def train_ppo(base_model, tokenizer):
         trust_remote_code=True
     ).cuda()  # Explicitly move to GPU
 
+    train_dataset = load_dataset("OpenAssistant/oasst1", split="train")
     # Initialize PPO trainer
     ppo_trainer = PPOTrainer(
         config=training_args,
         processing_class=tokenizer,
         policy=base_model,
         ref_policy=None,
-        train_dataset=None,
+        train_dataset=train_dataset,
         reward_model=reward_model,
     )
 
