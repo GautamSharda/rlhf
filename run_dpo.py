@@ -142,18 +142,14 @@ def train_ppo(base_model, tokenizer):
         optim="adamw_8bit"
     )
 
-    # Get the base model if it's a PEFT model
-    if hasattr(base_model, "get_base_model"):
-        print("Using base model from PEFT model...")
-        policy_model = base_model.get_base_model()
-    else:
-        policy_model = base_model
-
-    # Make sure policy model has its modules accessible
-    assert hasattr(policy_model, "modules"), "Policy model doesn't have modules method"
+    print("Initializing models...")
     
-    # Create a reference model (copy of base model)
-    ref_model = deepcopy(policy_model) if policy_model is not None else None
+    # Keep original policy model
+    policy_model = base_model
+    policy_model.train()  # Ensure in training mode
+    
+    # No need for ref_model when using PEFT
+    ref_model = None
 
     # Load reward model
     print("Loading reward model...")
@@ -164,69 +160,30 @@ def train_ppo(base_model, tokenizer):
             ignore_mismatched_sizes=True,
             torch_dtype=torch.float16
         ).cuda()
-        # Make sure reward model has its modules accessible
-        assert hasattr(reward_model, "modules"), "Reward model doesn't have modules method"
+        reward_model.eval()  # Put in eval mode
         print("Successfully loaded reward model")
     except Exception as e:
         print(f"Error loading reward model: {e}")
-        print(f"Full error: {str(e)}")
         return base_model
 
-    # Print model information for debugging
-    print("\nModel information before PPOTrainer:")
-    print(f"Policy model type: {type(policy_model)}")
-    print(f"Policy model device: {next(policy_model.parameters()).device}")
-    print(f"Reward model type: {type(reward_model)}")
-    print(f"Reward model device: {next(reward_model.parameters()).device}")
+    # Verify models
+    print("\nVerifying models...")
+    print(f"Policy model: {type(policy_model)}")
+    print(f"Reward model: {type(reward_model)}")
 
     # Create dataset
     print("\nPreparing dataset...")
-    raw_dataset = load_dataset("Dahoas/rm-static", split="train")
+    dataset = load_dataset("Dahoas/rm-static", split="train[:1000]")
     
-    def format_dataset(example):
-        messages = [
-            {"from": "human", "value": example["prompt"]},
-            {"from": "assistant", "value": example["chosen"]}
-        ]
-        
-        # Format conversation
-        formatted_text = tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=False
-        )
-        
-        # Tokenize
-        inputs = tokenizer(
-            formatted_text,
-            truncation=True,
-            max_length=512,
-            padding="max_length",
-            return_tensors="pt"
-        )
-        
-        return {
-            "input_ids": inputs["input_ids"][0],
-            "attention_mask": inputs["attention_mask"][0],
-            "query": example["prompt"],
-            "response": example["chosen"]
-        }
-    
-    train_dataset = raw_dataset.map(format_dataset)
-    train_dataset = train_dataset.select(range(min(len(train_dataset), 1000)))
-
-    # Verify dataset format
-    print("\nDataset sample:")
-    print(train_dataset[0])
-
-    print("\nInitializing PPO trainer...")
+    print("Initializing PPO trainer...")
     try:
+        # Initialize trainer with minimal components first
         ppo_trainer = PPOTrainer(
             config=ppo_config,
             policy=policy_model,
-            ref_policy=ref_model,
+            ref_policy=None,  # Explicitly None since using PEFT
             tokenizer=tokenizer,
-            train_dataset=train_dataset,
+            train_dataset=dataset,
             reward_model=reward_model
         )
 
@@ -240,11 +197,18 @@ def train_ppo(base_model, tokenizer):
         import traceback
         print("Full traceback:")
         print(traceback.format_exc())
+        
+        # Additional debugging info
+        print("\nModel inspection:")
+        print(f"Policy model modules exist: {hasattr(policy_model, 'modules')}")
+        print(f"Reward model modules exist: {hasattr(reward_model, 'modules')}")
+        
         return base_model
 
 def test_model(base, model, tokenizer):
     print("\nTesting the model...")
     model = FastLanguageModel.for_inference(model)
+    model.eval()  # Ensure eval mode
 
     test_messages = [
         {"from": "human", "value": "What is the meaning of life?"}
@@ -256,32 +220,39 @@ def test_model(base, model, tokenizer):
         add_generation_prompt=True,
         return_tensors="pt"
     ).to("cuda")
-    
+
     print("Base response:")
     text_streamer = TextStreamer(tokenizer)
     _ = base.generate(
         input_ids=inputs,
         streamer=text_streamer,
-        max_new_tokens=128,
+        max_new_tokens=64,  # Reduced to avoid loops
         use_cache=True,
-        pad_token_id=tokenizer.pad_token_id,
-        eos_token_id=tokenizer.eos_token_id,
         do_sample=True,
         temperature=0.7,
+        top_k=50,
         top_p=0.9,
+        repetition_penalty=1.2,
+        no_repeat_ngram_size=3,
+        eos_token_id=tokenizer.eos_token_id,
+        pad_token_id=tokenizer.pad_token_id,
     )
+
     print("Model response:")
     text_streamer = TextStreamer(tokenizer)
     _ = model.generate(
         input_ids=inputs,
         streamer=text_streamer,
-        max_new_tokens=128,
+        max_new_tokens=64,  # Reduced to avoid loops
         use_cache=True,
-        pad_token_id=tokenizer.pad_token_id,
-        eos_token_id=tokenizer.eos_token_id,
         do_sample=True,
         temperature=0.7,
+        top_k=50,
         top_p=0.9,
+        repetition_penalty=1.2,
+        no_repeat_ngram_size=3,
+        eos_token_id=tokenizer.eos_token_id,
+        pad_token_id=tokenizer.pad_token_id,
     )
 
 if __name__ == "__main__":
