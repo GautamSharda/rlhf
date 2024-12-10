@@ -130,7 +130,7 @@ def train_dpo(base_model, tokenizer):
 def train_ppo(base_model, tokenizer):
     print("Starting PPO Training...")
     
-    # Configure PPO training
+    # Configure PPO training without invalid parameter
     ppo_config = PPOConfig(
         output_dir="ppo_output",
         per_device_train_batch_size=4,
@@ -140,7 +140,7 @@ def train_ppo(base_model, tokenizer):
         save_strategy="epoch",
         logging_steps=10,
         optim="adamw_8bit",
-        model_max_length=512  # Added to help with sequence lengths
+        max_length=512  # Use max_length instead of model_max_length
     )
 
     # Load reward model
@@ -164,7 +164,12 @@ def train_ppo(base_model, tokenizer):
     # Format dataset to match PPO expectations
     def format_dataset(example):
         return {
-            "input_ids": tokenizer(example["prompt"], truncation=True, max_length=512)["input_ids"],
+            "input_ids": tokenizer(
+                example["prompt"], 
+                truncation=True, 
+                max_length=512, 
+                padding="max_length"
+            )["input_ids"],
             "query": example["prompt"],
             "response": example["chosen"]
         }
