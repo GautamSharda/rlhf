@@ -142,6 +142,16 @@ def train_ppo(base_model, tokenizer):
         optim="adamw_8bit"
     )
 
+    # Get the base model if it's a PEFT model
+    if hasattr(base_model, "get_base_model"):
+        print("Unwrapping PEFT model...")
+        policy_model = base_model.get_base_model()
+    else:
+        policy_model = base_model
+
+    # Enable gradient checkpointing
+    policy_model.gradient_checkpointing_enable()
+
     # Load reward model
     print("Loading reward model...")
     try:
@@ -160,22 +170,18 @@ def train_ppo(base_model, tokenizer):
     print("Loading dataset...")
     raw_dataset = load_dataset("Dahoas/rm-static", split="train")
     
-    # Format dataset to match PPO expectations with proper chat formatting
     def format_dataset(example):
-        # Create chat messages
         messages = [
             {"from": "human", "value": example["prompt"]},
             {"from": "assistant", "value": example["chosen"]}
         ]
         
-        # Apply chat template
         formatted_text = tokenizer.apply_chat_template(
             messages,
             tokenize=False,
             add_generation_prompt=False
         )
         
-        # Tokenize the formatted text
         inputs = tokenizer(
             formatted_text,
             truncation=True,
@@ -192,12 +198,12 @@ def train_ppo(base_model, tokenizer):
         }
     
     train_dataset = raw_dataset.map(format_dataset)
-    train_dataset = train_dataset.select(range(min(len(train_dataset), 10000000000000000000)))
+    train_dataset = train_dataset.select(range(min(len(train_dataset), 1000)))
 
     try:
         ppo_trainer = PPOTrainer(
             config=ppo_config,
-            policy=base_model,
+            policy=policy_model,  # Using unwrapped model
             ref_policy=None,
             tokenizer=tokenizer,
             train_dataset=train_dataset,
@@ -207,12 +213,12 @@ def train_ppo(base_model, tokenizer):
         print("Starting PPO training...")
         ppo_trainer.train()
         print("PPO Training completed!")
-        return base_model  # Return the original model to maintain compatibility
+        return base_model  # Return original PEFT model
 
     except Exception as e:
         print(f"Error during PPO training setup: {e}")
         print("Debug info:")
-        print(f"policy type: {type(base_model)}")
+        print(f"policy type: {type(policy_model)}")
         print(f"tokenizer type: {type(tokenizer)}")
         print(f"reward_model type: {type(reward_model)}")
         return base_model
