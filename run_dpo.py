@@ -148,7 +148,8 @@ def train_ppo(base_model, tokenizer):
     try:
         reward_model = AutoModelForSequenceClassification.from_pretrained(
             "lvwerra/distilbert-imdb",
-            num_labels=1,
+            num_labels=2,
+            ignore_mismatched_sizes=True,
             torch_dtype=torch.float16
         ).cuda()
         print("Successfully loaded reward model")
@@ -175,7 +176,6 @@ def train_ppo(base_model, tokenizer):
     ppo_trainer.train()
     print("PPO Training completed!")
 
-    ppo_trainer.save_model()
     return ppo_trainer.policy  # Changed from model to policy
 
 def test_model(model, tokenizer):
