@@ -71,7 +71,7 @@ def train_sft():
     )
 
     print("Starting SFT training...")
-    trainer.train()
+    # trainer.train()
     print("SFT Training completed!")
     return model, tokenizer
 
