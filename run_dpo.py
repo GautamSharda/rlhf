@@ -144,13 +144,16 @@ def train_ppo(base_model, tokenizer):
 
     # Get the base model if it's a PEFT model
     if hasattr(base_model, "get_base_model"):
-        print("Unwrapping PEFT model...")
+        print("Using base model from PEFT model...")
         policy_model = base_model.get_base_model()
     else:
         policy_model = base_model
 
-    # Enable gradient checkpointing
-    policy_model.gradient_checkpointing_enable()
+    # Make sure policy model has its modules accessible
+    assert hasattr(policy_model, "modules"), "Policy model doesn't have modules method"
+    
+    # Create a reference model (copy of base model)
+    ref_model = deepcopy(policy_model) if policy_model is not None else None
 
     # Load reward model
     print("Loading reward model...")
@@ -161,13 +164,23 @@ def train_ppo(base_model, tokenizer):
             ignore_mismatched_sizes=True,
             torch_dtype=torch.float16
         ).cuda()
+        # Make sure reward model has its modules accessible
+        assert hasattr(reward_model, "modules"), "Reward model doesn't have modules method"
         print("Successfully loaded reward model")
     except Exception as e:
         print(f"Error loading reward model: {e}")
+        print(f"Full error: {str(e)}")
         return base_model
 
-    # Create a properly formatted dataset
-    print("Loading dataset...")
+    # Print model information for debugging
+    print("\nModel information before PPOTrainer:")
+    print(f"Policy model type: {type(policy_model)}")
+    print(f"Policy model device: {next(policy_model.parameters()).device}")
+    print(f"Reward model type: {type(reward_model)}")
+    print(f"Reward model device: {next(reward_model.parameters()).device}")
+
+    # Create dataset
+    print("\nPreparing dataset...")
     raw_dataset = load_dataset("Dahoas/rm-static", split="train")
     
     def format_dataset(example):
@@ -176,12 +189,14 @@ def train_ppo(base_model, tokenizer):
             {"from": "assistant", "value": example["chosen"]}
         ]
         
+        # Format conversation
         formatted_text = tokenizer.apply_chat_template(
             messages,
             tokenize=False,
             add_generation_prompt=False
         )
         
+        # Tokenize
         inputs = tokenizer(
             formatted_text,
             truncation=True,
@@ -200,11 +215,16 @@ def train_ppo(base_model, tokenizer):
     train_dataset = raw_dataset.map(format_dataset)
     train_dataset = train_dataset.select(range(min(len(train_dataset), 1000)))
 
+    # Verify dataset format
+    print("\nDataset sample:")
+    print(train_dataset[0])
+
+    print("\nInitializing PPO trainer...")
     try:
         ppo_trainer = PPOTrainer(
             config=ppo_config,
-            policy=policy_model,  # Using unwrapped model
-            ref_policy=None,
+            policy=policy_model,
+            ref_policy=ref_model,
             tokenizer=tokenizer,
             train_dataset=train_dataset,
             reward_model=reward_model
@@ -213,14 +233,13 @@ def train_ppo(base_model, tokenizer):
         print("Starting PPO training...")
         ppo_trainer.train()
         print("PPO Training completed!")
-        return base_model  # Return original PEFT model
+        return base_model
 
     except Exception as e:
-        print(f"Error during PPO training setup: {e}")
-        print("Debug info:")
-        print(f"policy type: {type(policy_model)}")
-        print(f"tokenizer type: {type(tokenizer)}")
-        print(f"reward_model type: {type(reward_model)}")
+        print(f"\nError during PPO training setup: {e}")
+        import traceback
+        print("Full traceback:")
+        print(traceback.format_exc())
         return base_model
 
 def test_model(base, model, tokenizer):
