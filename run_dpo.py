@@ -128,7 +128,6 @@ def train_dpo(base_model, tokenizer):
 
 # Second part: PPO
 from typing import Optional
-import torch
 
 def train_ppo(base_model, tokenizer):
     print("Starting PPO Training...")
@@ -145,39 +144,10 @@ def train_ppo(base_model, tokenizer):
         optim="adamw_8bit"
     )
 
-    # Create our own dropout disabling function
-    def safe_disable_dropout(model: Optional[torch.nn.Module]) -> None:
-        if model is None:
-            print("Warning: Attempted to disable dropout on None model")
-            return
-            
-        print(f"Disabling dropout for model type: {type(model)}")
-        for module in model.modules():
-            if isinstance(module, (torch.nn.Dropout, torch.nn.LayerNorm)):
-                module.eval()
-                print(f"  - Disabled module: {type(module)}")
-
     # Start by setting up all models
-    if hasattr(base_model, "get_base_model"):
-        print("Getting base model...")
-        policy = base_model.get_base_model()
-    else:
-        policy = base_model
-        
-    # Ensure policy is in training mode and disable its dropouts
-    policy.train()
-    safe_disable_dropout(policy)
-    
-    # Create value model
-    print("Creating value model...")
-    value_model = AutoModelForSequenceClassification.from_pretrained(
-        "lvwerra/distilbert-imdb",
-        num_labels=2,
-        ignore_mismatched_sizes=True,
-        torch_dtype=torch.float16
-    ).cuda()
-    value_model.eval()
-    safe_disable_dropout(value_model)
+    print("Setting up models...")
+    policy = base_model  # Don't unwrap PEFT model
+    policy.train()  # Ensure in training mode
 
     # Create reward model
     print("Loading reward model...")
@@ -188,29 +158,19 @@ def train_ppo(base_model, tokenizer):
         torch_dtype=torch.float16
     ).cuda()
     reward_model.eval()
-    safe_disable_dropout(reward_model)
     print("Successfully loaded reward model")
 
     # Create dataset
     print("\nPreparing dataset...")
     dataset = load_dataset("Dahoas/rm-static", split="train[:1000]")
 
-    # Monkey patch the disable_dropout_in_model function to add debugging
-    import trl.trainer.utils
-    original_disable = trl.trainer.utils.disable_dropout_in_model
+    print("\nModel check before PPOTrainer:")
+    print(f"Policy type: {type(policy)}")
+    print(f"Reward model type: {type(reward_model)}")
     
-    def debug_disable_dropout(model):
-        print(f"TRL attempting to disable dropout on: {type(model)}")
-        if model is None:
-            print("Warning: TRL received None model!")
-            return
-        return original_disable(model)
-    
-    trl.trainer.utils.disable_dropout_in_model = debug_disable_dropout
-
     print("\nInitializing PPO trainer...")
     try:
-        # Initialize trainer
+        # Initialize trainer with minimal components
         ppo_trainer = PPOTrainer(
             config=ppo_config,
             policy=policy,
@@ -218,22 +178,19 @@ def train_ppo(base_model, tokenizer):
             tokenizer=tokenizer,
             train_dataset=dataset,
             reward_model=reward_model,
-            value_model=value_model
+            # Don't pass value_model - let PPOTrainer handle it internally
         )
 
         print("Starting PPO training...")
         ppo_trainer.train()
         print("PPO Training completed!")
-        return base_model
+        return policy
 
     except Exception as e:
         print(f"\nError during PPO training setup: {e}")
         print("\nFull traceback:")
         import traceback
         print(traceback.format_exc())
-        
-        # Restore original function
-        trl.trainer.utils.disable_dropout_in_model = original_disable
         return base_model
 
 def test_model(base, model, tokenizer):
