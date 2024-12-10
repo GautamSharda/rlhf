@@ -130,7 +130,7 @@ def train_dpo(base_model, tokenizer):
 def train_ppo(base_model, tokenizer):
     print("Starting PPO Training...")
     
-    # Basic PPO configuration with only valid parameters
+    # Basic PPO configuration
     ppo_config = PPOConfig(
         output_dir="ppo_output",
         per_device_train_batch_size=4,
@@ -160,16 +160,30 @@ def train_ppo(base_model, tokenizer):
     print("Loading dataset...")
     raw_dataset = load_dataset("Dahoas/rm-static", split="train")
     
-    # Format dataset to match PPO expectations
+    # Format dataset to match PPO expectations with proper chat formatting
     def format_dataset(example):
-        # Keep input length manageable
+        # Create chat messages
+        messages = [
+            {"from": "human", "value": example["prompt"]},
+            {"from": "assistant", "value": example["chosen"]}
+        ]
+        
+        # Apply chat template
+        formatted_text = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=False
+        )
+        
+        # Tokenize the formatted text
         inputs = tokenizer(
-            example["prompt"],
+            formatted_text,
             truncation=True,
             max_length=512,
-            padding=True,
+            padding="max_length",
             return_tensors="pt"
         )
+        
         return {
             "input_ids": inputs["input_ids"][0],
             "attention_mask": inputs["attention_mask"][0],
@@ -178,7 +192,7 @@ def train_ppo(base_model, tokenizer):
         }
     
     train_dataset = raw_dataset.map(format_dataset)
-    train_dataset = train_dataset.select(range(min(len(train_dataset), 1000000000000000)))
+    train_dataset = train_dataset.select(range(min(len(train_dataset), 1000)))
 
     try:
         ppo_trainer = PPOTrainer(
@@ -193,7 +207,7 @@ def train_ppo(base_model, tokenizer):
         print("Starting PPO training...")
         ppo_trainer.train()
         print("PPO Training completed!")
-        return ppo_trainer.policy
+        return base_model  # Return the original model to maintain compatibility
 
     except Exception as e:
         print(f"Error during PPO training setup: {e}")
@@ -203,35 +217,33 @@ def train_ppo(base_model, tokenizer):
         print(f"reward_model type: {type(reward_model)}")
         return base_model
 
-def test_model(base, model, tokenizer):
+def test_model(model, tokenizer):
     print("\nTesting the model...")
     model = FastLanguageModel.for_inference(model)
 
     test_messages = [
-        {"from": "human", "value": "What is the meaning of life?"},
+        {"from": "human", "value": "What is the meaning of life?"}
     ]
+    
     inputs = tokenizer.apply_chat_template(
         test_messages,
         tokenize=True,
         add_generation_prompt=True,
-        return_tensors="pt",
+        return_tensors="pt"
     ).to("cuda")
 
-    print("Base response:")
-    text_streamer = TextStreamer(tokenizer)
-    _ = base.generate(
-        input_ids=inputs,
-        streamer=text_streamer,
-        max_new_tokens=128,
-        use_cache=True
-    )
     print("Model response:")
     text_streamer = TextStreamer(tokenizer)
     _ = model.generate(
         input_ids=inputs,
         streamer=text_streamer,
         max_new_tokens=128,
-        use_cache=True
+        use_cache=True,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id,
+        do_sample=True,
+        temperature=0.7,
+        top_p=0.9,
     )
 
 if __name__ == "__main__":
