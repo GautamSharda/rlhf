@@ -128,34 +128,41 @@ def train_dpo(base_model, tokenizer):
 
 # Second part: PPO
 def train_ppo(base_model, tokenizer):
-    print("Entering PPO...")
+    print("Starting PPO Training...")
 
-    training_args = PPOConfig( 
+    # Configure PPO training
+    training_args = PPOConfig(
         output_dir="ppo_output",
+        per_device_train_batch_size=4,
+        learning_rate=1e-5,
+        num_train_epochs=1,
+        gradient_accumulation_steps=1,
+        save_strategy="epoch",
+        logging_steps=10,
+        optim="adamw_8bit"
     )
 
     # Enable gradient checkpointing
     base_model.gradient_checkpointing_enable()
 
-    policy = AutoModelForCausalLM.from_pretrained(
-        "unsloth/Meta-Llama-3.1-8B-bnb-4bit"
-    )
-
+    # Load reward model with proper configuration
     reward_model = AutoModelForSequenceClassification.from_pretrained(
-        "nvidia/Llama-3.1-nemotron-70B-Reward", from_tf=True
+        "nvidia/Llama-3.1-nemotron-70B-Reward",
+        from_tf=True,
+        device_map="auto",
+        load_in_4bit=True,
+        trust_remote_code=True
     )
 
-
+    # Initialize PPO trainer
     ppo_trainer = PPOTrainer(
-        args=training_args,
-        processing_class=tokenizer,
-        model=policy,
+        config=training_args,
+        model=base_model,
         ref_model=None,
+        tokenizer=tokenizer,
+        dataset=None,
         reward_model=reward_model,
-        value_model=None,
-        train_dataset=None,
-        eval_dataset=None,
-        peft_config=None,
+        reward_tokenizer=tokenizer
     )
 
     print("Starting PPO training...")
@@ -163,7 +170,7 @@ def train_ppo(base_model, tokenizer):
     print("PPO Training completed!")
 
     # Save the final model
-    ppo_trainer.save_model("final_model")
+    ppo_trainer.save_pretrained("final_ppo_model")
     return ppo_trainer.model
 
 def test_model(model, tokenizer):
