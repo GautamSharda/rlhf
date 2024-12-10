@@ -31,7 +31,7 @@ Compare to what the base model generates:
     - Container Disk: 100GB
     - Pod Volume: 100GB
 
-2. Add run_rlhf_dpo.py to the instance
+2. Add run_dpo.py to the instance
 
 3. Install dependencies
 ```bash
