@@ -1,7 +1,7 @@
 import torch
 from trl import SFTTrainer, DPOTrainer, DPOConfig, PPOTrainer, PPOConfig
 from datasets import load_dataset
-from transformers import AutoModelForCausalLM, AutoModelForSequenceClassification, TrainingArguments, TextStreamer
+from transformers import AutoModelForCausalLM, AutoModelForSequenceClassification, TrainingArguments, TextStreamer, BitsAndBytesConfig
 from unsloth.chat_templates import get_chat_template
 from unsloth import FastLanguageModel, is_bfloat16_supported
 import os
@@ -130,6 +130,14 @@ def train_dpo(base_model, tokenizer):
 def train_ppo(base_model, tokenizer):
     print("Starting PPO Training...")
 
+    # Configure quantization
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.float16,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_use_double_quant=False,
+    )
+    
     # Configure PPO training
     training_args = PPOConfig(
         output_dir="ppo_output",
