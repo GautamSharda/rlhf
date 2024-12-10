@@ -192,7 +192,7 @@ def train_ppo(base_model, tokenizer):
         }
     
     train_dataset = raw_dataset.map(format_dataset)
-    train_dataset = train_dataset.select(range(min(len(train_dataset), 1000)))
+    train_dataset = train_dataset.select(range(min(len(train_dataset), 10000000000000000000)))
 
     try:
         ppo_trainer = PPOTrainer(
@@ -217,7 +217,7 @@ def train_ppo(base_model, tokenizer):
         print(f"reward_model type: {type(reward_model)}")
         return base_model
 
-def test_model(model, tokenizer):
+def test_model(base, model, tokenizer):
     print("\nTesting the model...")
     model = FastLanguageModel.for_inference(model)
 
@@ -231,7 +231,20 @@ def test_model(model, tokenizer):
         add_generation_prompt=True,
         return_tensors="pt"
     ).to("cuda")
-
+    
+    print("Base response:")
+    text_streamer = TextStreamer(tokenizer)
+    _ = base.generate(
+        input_ids=inputs,
+        streamer=text_streamer,
+        max_new_tokens=128,
+        use_cache=True,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id,
+        do_sample=True,
+        temperature=0.7,
+        top_p=0.9,
+    )
     print("Model response:")
     text_streamer = TextStreamer(tokenizer)
     _ = model.generate(
