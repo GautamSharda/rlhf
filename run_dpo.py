@@ -165,6 +165,8 @@ def train_ppo(base_model, tokenizer):
         config=training_args,
         processing_class=tokenizer,
         policy=base_model,
+        ref_policy=None,
+        train_dataset=None,
         reward_model=reward_model,
     )
 
