@@ -142,7 +142,7 @@ def train_ppo(base_model, tokenizer):
     )
 
     reward_model = AutoModelForSequenceClassification.from_pretrained(
-        "nvidia/Llama-3.1-nemotron-70B-Reward"
+        "nvidia/Llama-3.1-nemotron-70B-Reward", from_tf=True
     )
 
 
