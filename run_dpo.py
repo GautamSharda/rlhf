@@ -124,6 +124,35 @@ def train_dpo(base_model, tokenizer):
     dpo_trainer.save_model("final_model")
     return dpo_trainer.model
 
+# Second part: PPO
+def train_ppo(base_model, tokenizer):
+    print("Entering PPO...")
+
+    training_args = PPOConfig()
+
+    # Enable gradient checkpointing
+    base_model.gradient_checkpointing_enable()
+
+    ppo_trainer = PPOTrainer(
+        args=training_args,
+        processing_class=tokenizer,
+        model=policy,
+        ref_model=ref_policy,
+        reward_model=reward_model,
+        value_model=value_model,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        peft_config=peft_config,
+    )
+
+    print("Starting PPO training...")
+    ppo_trainer.train()
+    print("PPO Training completed!")
+
+    # Save the final model
+    ppo_trainer.save_model("final_model")
+    return ppo_trainer.model
+
 def test_model(model, tokenizer):
     print("\nTesting the model...")
     model = FastLanguageModel.for_inference(model)
@@ -152,7 +181,9 @@ if __name__ == "__main__":
     sft_model, tokenizer = train_sft()
 
     # Then run DPO
-    final_model = train_dpo(sft_model, tokenizer)
+    # final_model = train_dpo(sft_model, tokenizer)
+
+    final_model = train_ppo(sft_model, tokenizer)
 
     # Test the final model
     test_model(final_model, tokenizer)
