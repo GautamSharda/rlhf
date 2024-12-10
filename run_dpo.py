@@ -130,7 +130,9 @@ def train_dpo(base_model, tokenizer):
 def train_ppo(base_model, tokenizer):
     print("Entering PPO...")
 
-    training_args = PPOConfig()
+    training_args = PPOConfig( 
+        output_dir="ppo_output",
+    )
 
     # Enable gradient checkpointing
     base_model.gradient_checkpointing_enable()
