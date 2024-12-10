@@ -2,6 +2,7 @@ import torch
 from trl import SFTTrainer, DPOTrainer, DPOConfig, PPOTrainer, PPOConfig
 from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoModelForSequenceClassification, TrainingArguments, TextStreamer, BitsAndBytesConfig
+from copy import deepcopy
 from unsloth.chat_templates import get_chat_template
 from unsloth import FastLanguageModel, is_bfloat16_supported
 import os
@@ -159,16 +160,18 @@ def train_ppo(base_model, tokenizer):
         torch_dtype=torch.float16,
         trust_remote_code=True
     ).cuda()  # Explicitly move to GPU
-
+    
+    ref_policy = deepcopy(base_model)
     train_dataset = load_dataset("OpenAssistant/oasst1", split="train")
     # Initialize PPO trainer
     ppo_trainer = PPOTrainer(
         config=training_args,
         processing_class=tokenizer,
         policy=base_model,
-        ref_policy=base_model,
+        ref_policy=ref_policy,
         train_dataset=train_dataset,
         reward_model=reward_model,
+        
     )
 
     print("Starting PPO training...")
