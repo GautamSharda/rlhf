@@ -7,6 +7,7 @@ from unsloth.chat_templates import get_chat_template
 from unsloth import FastLanguageModel, is_bfloat16_supported
 import os
 import time
+import re
 
 # First part: Supervised Fine-Tuning
 def train_sft():
@@ -193,55 +194,96 @@ def train_ppo(base_model, tokenizer):
         print(traceback.format_exc())
         return base_model
 
+def clean_generated_text(text):
+    """Improved cleaning of generated text."""
+    # Remove the prompt from the beginning if it appears
+    prompt_pattern = r'^.*?\?(?=\n|$)'
+    text = re.sub(prompt_pattern, '', text)
+    
+    # Remove template tokens
+    text = re.sub(r'<\|im_start\|>(?:user|assistant|system)', '', text)
+    
+    # Remove redundant newlines
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    
+    # Remove repeated content
+    lines = text.split('\n')
+    unique_lines = []
+    for line in lines:
+        if line not in unique_lines:
+            unique_lines.append(line)
+    text = '\n'.join(unique_lines)
+    
+    # Remove any remaining prompt echoes
+    text = re.sub(r'^.*?(?:What is|How does|Why|When|Where)\s+.*?\?\s*', '', text)
+    
+    return text.strip()
+
 def test_model(base, model, tokenizer):
     print("\nTesting the model...")
-    model = FastLanguageModel.for_inference(model)
-    model.eval()  # Ensure eval mode
-
-    test_messages = [
-        {"from": "human", "value": "What is the meaning of life?"}
+    test_prompts = [
+        "What is the meaning of life?",
+        "How does consciousness work?",
+        "What is the future of technology?"
     ]
     
-    inputs = tokenizer.apply_chat_template(
-        test_messages,
-        tokenize=True,
-        add_generation_prompt=True,
-        return_tensors="pt"
-    ).to("cuda")
+    responses_before = []
+    responses_after = []
+    
+    for prompt in test_prompts:
+        # Test base model
+        base = FastLanguageModel.for_inference(base)
+        base.eval()
+        test_messages = [{"from": "human", "value": prompt}]
+        inputs = tokenizer.apply_chat_template(
+            test_messages,
+            tokenize=True,
+            add_generation_prompt=True,
+            return_tensors="pt"
+        ).to("cuda")
+        
+        output = base.generate(
+            input_ids=inputs,
+            max_new_tokens=200,
+            min_new_tokens=50,
+            temperature=0.7,
+            top_p=0.9,
+            repetition_penalty=1.5,
+            no_repeat_ngram_size=3,
+            do_sample=True,
+            pad_token_id=tokenizer.pad_token_id,
+        )
+        response = clean_generated_text(tokenizer.decode(output[0], skip_special_tokens=True))
+        responses_before.append(response)
+        
+        # Test DPO model
+        model = FastLanguageModel.for_inference(model)
+        model.eval()
+        output = model.generate(
+            input_ids=inputs,
+            max_new_tokens=200,
+            min_new_tokens=50,
+            temperature=0.7,
+            top_p=0.9,
+            repetition_penalty=1.5,
+            no_repeat_ngram_size=3,
+            do_sample=True,
+            pad_token_id=tokenizer.pad_token_id,
+        )
+        response = clean_generated_text(tokenizer.decode(output[0], skip_special_tokens=True))
+        responses_after.append(response)
+    
+    # Write results to file
+    with open("test_results.txt", "w") as file:
+        file.write("Responses before DPO:\n")
+        for prompt, response in zip(test_prompts, responses_before):
+            file.write(f"Prompt: {prompt}\n")
+            file.write(f"Response: {response}\n\n")
 
-    print("Base response:")
-    text_streamer = TextStreamer(tokenizer)
-    _ = base.generate(
-        input_ids=inputs,
-        streamer=text_streamer,
-        max_new_tokens=64,  # Reduced to avoid loops
-        use_cache=True,
-        do_sample=True,
-        temperature=0.7,
-        top_k=50,
-        top_p=0.9,
-        repetition_penalty=1.2,
-        no_repeat_ngram_size=3,
-        eos_token_id=tokenizer.eos_token_id,
-        pad_token_id=tokenizer.pad_token_id,
-    )
-
-    print("Model response:")
-    text_streamer = TextStreamer(tokenizer)
-    _ = model.generate(
-        input_ids=inputs,
-        streamer=text_streamer,
-        max_new_tokens=64,  # Reduced to avoid loops
-        use_cache=True,
-        do_sample=True,
-        temperature=0.7,
-        top_k=50,
-        top_p=0.9,
-        repetition_penalty=1.2,
-        no_repeat_ngram_size=3,
-        eos_token_id=tokenizer.eos_token_id,
-        pad_token_id=tokenizer.pad_token_id,
-    )
+        file.write("Responses after DPO:\n")
+        for prompt, response in zip(test_prompts, responses_after):
+            file.write(f"Prompt: {prompt}\n")
+            file.write(f"Response: {response}\n\n")
 
 if __name__ == "__main__":
     # First run SFT
