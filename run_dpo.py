@@ -273,14 +273,14 @@ def test_model(base, model, tokenizer):
         response = clean_generated_text(tokenizer.decode(output[0], skip_special_tokens=True))
         responses_after.append(response)
     
-    # Write results to file
+    # Write results to file with the exact format expected by evaluate_quality.py
     with open("test_results.txt", "w") as file:
-        file.write("Responses before DPO:\n")
+        file.write("Responses before DPO feedback loop:\n")
         for prompt, response in zip(test_prompts, responses_before):
             file.write(f"Prompt: {prompt}\n")
             file.write(f"Response: {response}\n\n")
 
-        file.write("Responses after DPO:\n")
+        file.write("Responses after DPO feedback loop:\n")
         for prompt, response in zip(test_prompts, responses_after):
             file.write(f"Prompt: {prompt}\n")
             file.write(f"Response: {response}\n\n")
