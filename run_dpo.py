@@ -292,7 +292,7 @@ if __name__ == "__main__":
     # Then run DPO
     # final_model = train_dpo(sft_model, tokenizer)
 
-    final_model = train_ppo(sft_model, tokenizer)
+    final_model = train_dpo(sft_model, tokenizer)
 
     # Test the final model
     test_model(sft_model, final_model, tokenizer)
