@@ -287,12 +287,17 @@ def test_model(base, model, tokenizer):
 
 if __name__ == "__main__":
     # First run SFT
-    sft_model, tokenizer = train_sft()
+    base_model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name="unsloth/Meta-Llama-3.1-8B-bnb-4bit",
+        max_seq_length=2048,
+        load_in_4bit=True,
+        dtype=None,
+    )
 
     # Then run DPO
     # final_model = train_dpo(sft_model, tokenizer)
 
-    final_model = train_dpo(sft_model, tokenizer)
+    final_model = train_dpo(base_model, tokenizer)
 
     # Test the final model
-    test_model(sft_model, final_model, tokenizer)
+    test_model(base_model, final_model, tokenizer)
