@@ -294,7 +294,7 @@ if __name__ == "__main__":
         dtype=None,
     )
     model = FastLanguageModel.get_peft_model(
-        model,
+        base_model,
         r=16,
         lora_alpha=16,
         lora_dropout=0,
@@ -313,7 +313,7 @@ if __name__ == "__main__":
     # Then run DPO
     # final_model = train_dpo(sft_model, tokenizer)
 
-    final_model = train_dpo(base_model, tokenizer)
+    final_model = train_dpo(model, tokenizer)
 
     # Test the final model
-    test_model(base_model, final_model, tokenizer)
+    test_model(model, final_model, tokenizer)
