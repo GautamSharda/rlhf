@@ -293,6 +293,12 @@ if __name__ == "__main__":
         load_in_4bit=True,
         dtype=None,
     )
+    # Apply chat template before returning
+    tokenizer = get_chat_template(
+        tokenizer,
+        mapping={"role": "from", "content": "value", "user": "human", "assistant": "gpt"},
+        chat_template="chatml",
+    )
 
     # Then run DPO
     # final_model = train_dpo(sft_model, tokenizer)
